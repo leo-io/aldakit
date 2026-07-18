@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`Seq.from_alda()` silently produced empty sequences** - `Seq.from_alda(source).elements` was always `[]`, so every `compose.transform` function (`transpose`, `invert`, `reverse`, etc.) silently no-op'd on parsed text. Added `compose/from_ast.py` to convert AST nodes into compose objects, populating `.elements` correctly; unsupported constructs (repeats, crams, voices, variables, markers, lisp attributes) raise the new `UnsupportedAldaConstructError` instead of failing silently.
+- **`.to_alda()` never emitted octave markers** - `Note.to_alda()`, `Chord.to_alda()`, `Seq.to_alda()`, `Cram.to_alda()`, `Voice.to_alda()`, `Variable.to_alda()`, and `Score.to_alda()` (elements mode) all dropped explicit/computed octave values, so e.g. a `transpose()` result crossing an octave boundary rendered text that would sound an octave off with no error. Added a shared octave-tracking renderer (`compose/core.py::render_elements_to_alda`) used by all affected methods; `Score.to_alda()` correctly resets octave state at each `Part` boundary.
+
 ## [0.1.11]
 
 ### Changed

@@ -1,6 +1,7 @@
 """Tests for AST-level transformers."""
 
 from aldakit.compose import (
+    Seq,
     note,
     rest,
     chord,
@@ -68,6 +69,23 @@ class TestTranspose:
         melody = seq(note("c"), rest(duration=4), note("e"))
         transposed = transpose(melody, 2)
         assert isinstance(transposed.elements[1], type(rest()))
+
+    def test_transpose_seq_from_alda_end_to_end(self):
+        result = transpose(Seq.from_alda("c d e"), 7).to_alda()
+        assert result == "g a b"
+
+    def test_transpose_across_octave_boundary_emits_marker(self):
+        from aldakit.parser import parse
+        from aldakit.midi.generator import generate_midi
+
+        transposed = transpose(seq(note("a"), note("b")), 3)
+        result = transposed.to_alda()
+        assert result.count("o5") == 1
+
+        midi = generate_midi(parse(result))
+        rendered_pitches = [n.pitch for n in midi.notes]
+        expected_pitches = [e.midi_pitch for e in transposed.elements]
+        assert rendered_pitches == expected_pitches
 
 
 class TestInvert:

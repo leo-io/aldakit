@@ -463,7 +463,26 @@ class Score:
             # Generate Alda from AST
             return _ast_to_alda(self.ast)
         else:
-            return " ".join(e.to_alda() for e in self._elements)
+            from .compose.core import render_elements_to_alda
+            from .compose.part import Part
+
+            text_parts: list[str] = []
+            run: list[ComposeElement] = []
+            current_octave = 4
+            for elem in self._elements:
+                if isinstance(elem, Part):
+                    if run:
+                        rendered, _ = render_elements_to_alda(run, current_octave)
+                        text_parts.append(rendered)
+                        run = []
+                    current_octave = 4
+                    text_parts.append(elem.to_alda())
+                else:
+                    run.append(elem)
+            if run:
+                rendered, current_octave = render_elements_to_alda(run, current_octave)
+                text_parts.append(rendered)
+            return " ".join(text_parts)
 
     def play(
         self,

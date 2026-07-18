@@ -108,6 +108,9 @@ class TestNote:
         assert note("c", seconds=2).to_alda() == "c2s"
         assert note("c", slurred=True).to_alda() == "c~"
 
+    def test_note_to_alda_with_octave(self):
+        assert note("c", octave=5).to_alda() == "o5 c"
+
     def test_note_midi_pitch(self):
         assert note("c").midi_pitch == 60  # C4
         assert note("c", octave=5).midi_pitch == 72  # C5
@@ -206,6 +209,18 @@ class TestChord:
         assert chord("c", "e", "g").to_alda() == "c/e/g"
         assert chord("c", "e", "g", duration=1).to_alda() == "c1/e/g"
 
+    def test_chord_to_alda_with_octave(self):
+        c = chord(note("c", octave=5), note("e"), note("g"))
+        assert c.to_alda() == "o5 c/e/g"
+
+    def test_chord_to_alda_multi_octave(self):
+        from aldakit.parser import parse
+
+        c = chord(note("c"), note("e", octave=5), note("g", octave=6))
+        result = c.to_alda()
+        assert "o5" in result and "o6" in result
+        parse(result)  # round-trips as valid Alda
+
 
 class TestSeq:
     """Test Seq class and seq() factory."""
@@ -247,6 +262,30 @@ class TestSeq:
         ast = s.to_ast()
         assert isinstance(ast, EventSequenceNode)
 
+    def test_seq_from_alda_populates_elements(self):
+        s = Seq.from_alda("c d e")
+        assert len(s.elements) == 3
+        assert all(isinstance(e, Note) for e in s.elements)
+
+    def test_seq_from_alda_bracketed_nested(self):
+        s = Seq.from_alda("[c d] e")
+        assert len(s.elements) == 2
+        assert isinstance(s.elements[0], Seq)
+        assert len(s.elements[0].elements) == 2
+        assert isinstance(s.elements[1], Note)
+
+    def test_seq_from_alda_unsupported_raises(self):
+        from aldakit.compose import UnsupportedAldaConstructError
+
+        with pytest.raises(UnsupportedAldaConstructError):
+            Seq.from_alda("c*4")
+
+    def test_seq_from_alda_octave_marker_roundtrip(self):
+        from aldakit.compose import OctaveSet
+
+        s = Seq.from_alda("o5 c d")
+        assert s.elements == [OctaveSet(value=5), note("c"), note("d")]
+
 
 class TestRepeat:
     """Test Repeat class."""
@@ -254,6 +293,32 @@ class TestRepeat:
     def test_repeat_note(self):
         r = note("c") * 4
         assert r.times == 4
+
+    def test_repeat_seq_from_alda_brackets(self):
+        r = Seq.from_alda("c d e") * 4
+        assert r.to_alda() == "[c d e]*4"
+
+
+class TestOctaveAwareRendering:
+    """Test octave marker rendering for Cram, Voice, and Variable."""
+
+    def test_cram_to_alda_with_octave(self):
+        from aldakit.compose import cram
+
+        c = cram(note("c", octave=5), note("d"), note("e"), duration=4)
+        assert c.to_alda() == "{o5 c d e}4"
+
+    def test_voice_to_alda_with_octave(self):
+        from aldakit.compose import voice
+
+        v = voice(1, note("c", octave=5), note("d"))
+        assert v.to_alda() == "V1: o5 c d"
+
+    def test_variable_to_alda_with_octave(self):
+        from aldakit.compose import var
+
+        v = var("riff", note("c", octave=5), note("d"))
+        assert v.to_alda() == "riff = o5 c d"
 
     def test_repeat_to_ast(self):
         r = note("c") * 4

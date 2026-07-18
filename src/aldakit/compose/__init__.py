@@ -41,7 +41,7 @@ from .attributes import (
     vol,
     volume,
 )
-from .base import ComposeElement
+from .base import ComposeElement, UnsupportedAldaConstructError
 from .chords import (
     CHORD_INTERVALS,
     add9,
@@ -151,6 +151,7 @@ from .transform import (  # Pitch transformers; Structural transformers; Helpers
 __all__ = [
     # Base
     "ComposeElement",
+    "UnsupportedAldaConstructError",
     # Core classes
     "Note",
     "Rest",

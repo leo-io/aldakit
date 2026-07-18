@@ -112,8 +112,8 @@ class Note(ComposeElement):
             )
         return None
 
-    def to_alda(self) -> str:
-        """Convert to Alda source code."""
+    def _body_to_alda(self) -> str:
+        """Convert to Alda source code, excluding any octave marker."""
         result = self.pitch.lower()
 
         # Accidentals
@@ -134,6 +134,12 @@ class Note(ComposeElement):
             result += "~"
 
         return result
+
+    def to_alda(self) -> str:
+        """Convert to Alda source code."""
+        if self.octave is not None:
+            return f"o{self.octave} {self._body_to_alda()}"
+        return self._body_to_alda()
 
     @property
     def midi_pitch(self) -> int:
@@ -298,17 +304,67 @@ class Chord(ComposeElement):
 
     def to_alda(self) -> str:
         """Convert to Alda source code."""
-        parts = []
-        for i, n in enumerate(self.notes):
-            if i == 0 and self.duration is not None:
-                modified_note = n.with_duration(self.duration)
-                if self.dots:
-                    modified_note = modified_note.with_dots(self.dots)
-                parts.append(modified_note.to_alda())
+        leading, body, _ = _chord_tokens(self, current_octave=4)
+        return f"{leading} {body}" if leading else body
+
+
+def _chord_tokens(ch: Chord, current_octave: int) -> tuple[str | None, str, int]:
+    """Render a chord's notes to slash-joined tokens.
+
+    Returns (leading_token_or_None, slash_joined_body, new_current_octave).
+    The leading token (an octave change on the chord's first note) must be
+    emitted as a preceding token, never slash-joined into the chord body,
+    since the grammar requires a chord to start directly with a note letter.
+    """
+    parts: list[str] = []
+    leading: str | None = None
+    octave = current_octave
+    for i, n in enumerate(ch.notes):
+        if n.octave is not None and n.octave != octave:
+            marker = f"o{n.octave}"
+            if i == 0:
+                leading = marker
             else:
-                # Subsequent notes don't repeat duration
-                parts.append(n.pitch + (n.accidental or ""))
-        return "/".join(parts)
+                parts.append(marker)
+            octave = n.octave
+        if i == 0 and ch.duration is not None:
+            modified = n.with_duration(ch.duration)
+            if ch.dots:
+                modified = modified.with_dots(ch.dots)
+            parts.append(modified._body_to_alda())
+        else:
+            parts.append(n.pitch + (n.accidental or ""))
+    return leading, "/".join(parts), octave
+
+
+def render_elements_to_alda(
+    elements: list[ComposeElement], start_octave: int = 4
+) -> tuple[str, int]:
+    """Render a list of compose elements to Alda source, tracking octave state.
+
+    Returns (rendered_text, ending_octave) so callers can thread octave
+    state through sibling sequences/parts.
+    """
+    tokens: list[str] = []
+    current = start_octave
+    for elem in elements:
+        if isinstance(elem, Note):
+            if elem.octave is not None and elem.octave != current:
+                tokens.append(f"o{elem.octave}")
+                current = elem.octave
+            tokens.append(elem._body_to_alda())
+        elif isinstance(elem, Chord):
+            leading, body, current = _chord_tokens(elem, current)
+            if leading:
+                tokens.append(leading)
+            tokens.append(body)
+        elif isinstance(elem, Seq):
+            inner, current = render_elements_to_alda(elem.elements, current)
+            if inner:
+                tokens.append(inner)
+        else:
+            tokens.append(elem.to_alda())
+    return " ".join(tokens), current
 
 
 @dataclass
@@ -331,7 +387,7 @@ class Seq(ComposeElement):
 
     def to_alda(self) -> str:
         """Convert to Alda source code."""
-        return " ".join(e.to_alda() for e in self.elements)
+        return render_elements_to_alda(self.elements)[0]
 
     @classmethod
     def from_alda(cls, source: str) -> Seq:
@@ -344,10 +400,12 @@ class Seq(ComposeElement):
             Seq containing parsed elements.
         """
         from ..parser import parse
+        from .from_ast import ast_to_elements
 
         ast = parse(source)
+        elements = ast_to_elements(ast.children)
         # Wrap the AST in a ParsedSeq that delegates to_ast to the parsed result
-        return _ParsedSeq(ast=ast, source=source)
+        return _ParsedSeq(ast=ast, source=source, elements=elements)
 
     def __mul__(self, n: int) -> Repeat:
         """Repeat this sequence n times."""
@@ -577,7 +635,7 @@ class Cram(ComposeElement):
 
     def to_alda(self) -> str:
         """Convert to Alda source code."""
-        inner = " ".join(elem.to_alda() for elem in self.elements)
+        inner = render_elements_to_alda(self.elements)[0]
         if self.duration is not None:
             dots = "." * self.dots
             return f"{{{inner}}}{self.duration}{dots}"
@@ -634,7 +692,7 @@ class Voice(ComposeElement):
 
     def to_alda(self) -> str:
         """Convert to Alda source code."""
-        inner = " ".join(elem.to_alda() for elem in self.elements)
+        inner = render_elements_to_alda(self.elements)[0]
         return f"V{self.number}: {inner}"
 
 
@@ -715,7 +773,7 @@ class Variable(ComposeElement):
 
     def to_alda(self) -> str:
         """Convert to Alda source code."""
-        inner = " ".join(elem.to_alda() for elem in self.elements)
+        inner = render_elements_to_alda(self.elements)[0]
         return f"{self.name} = {inner}"
 
 

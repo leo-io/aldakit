@@ -9,6 +9,10 @@ if TYPE_CHECKING:
     from ..ast_nodes import ASTNode
 
 
+class UnsupportedAldaConstructError(ValueError):
+    """Raised when an Alda AST construct has no compose-object equivalent."""
+
+
 class ComposeElement(ABC):
     """Base class for all compose elements.
 
