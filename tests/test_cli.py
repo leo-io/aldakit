@@ -1144,3 +1144,44 @@ class TestTranscribeCommand:
 
         err = capsys.readouterr().err
         assert "Error" in err
+
+
+class TestLiveSubcommand:
+    """Tests for the `live` subcommand wiring."""
+
+    def test_has_live_subcommand(self):
+        parser = create_parser()
+        args = parser.parse_args(["live", "song.alda"])
+        assert args.command == "live"
+        assert args.file == Path("song.alda")
+        assert args.poll == pytest.approx(0.1)
+
+    def test_live_dispatches_to_liveplayer_run(self, monkeypatch, tmp_path):
+        path = tmp_path / "song.alda"
+        path.write_text("piano: c d e")
+
+        captured = {}
+
+        class DummyPlayer:
+            def __init__(self, file, **kwargs):
+                captured["file"] = file
+                captured["kwargs"] = kwargs
+
+            def run(self):
+                captured["ran"] = True
+                return 0
+
+        monkeypatch.setattr("aldakit.liveplayer.LivePlayer", DummyPlayer)
+        monkeypatch.setattr(
+            "aldakit.cli._resolve_output_port", lambda spec: (None, True)
+        )
+
+        rc = main(["live", str(path)])
+        assert rc == 0
+        assert captured["ran"] is True
+        assert captured["file"] == path
+
+    def test_live_missing_file_errors(self, capsys):
+        rc = main(["live", "/nonexistent/does-not-exist.alda"])
+        assert rc == 1
+        assert "File not found" in capsys.readouterr().err

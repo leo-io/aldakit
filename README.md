@@ -51,6 +51,9 @@ aldakit eval "piano: c d e f g"
 # Play an Alda file
 aldakit play examples/twinkle.alda
 
+# Live-coding loop: play on repeat and restart on every save
+aldakit live examples/twinkle.alda
+
 # Export to MIDI file
 aldakit play examples/bach-prelude.alda -o bach.mid
 
@@ -136,6 +139,41 @@ backend.stop()
 backend.concurrent_mode = False
 backend.play(score1.midi)  # Plays first
 backend.play(score2.midi)  # Waits, then plays second
+```
+
+### Live Coding (Watch Mode)
+
+Loop an Alda file and have it restart from the top every time you save it — a
+live-coding workflow for editing music in real time:
+
+```sh
+# Loop the file; edit and save in your editor to hear changes immediately
+aldakit live song.alda
+
+# Use the built-in audio backend
+aldakit live -a song.alda
+
+# Slower file-change polling (default 0.1s)
+aldakit live --poll 0.25 song.alda
+```
+
+A save that introduces a parse error is ignored: the last valid version keeps
+looping and the error is printed, so a half-typed edit never cuts the sound.
+Press Ctrl+C to stop.
+
+The same is available from Python:
+
+```python
+import aldakit
+
+# Convenience function (blocks until Ctrl+C)
+aldakit.live("song.alda")
+
+# Or use the class for more control
+from aldakit import LivePlayer
+
+player = LivePlayer("song.alda", use_audio=True, verbose=True)
+player.run()
 ```
 
 ### MIDI Import
@@ -477,6 +515,7 @@ aldakit [--version] [-h] {repl,play,eval,ports,transcribe} ...
 | (none) | Opens the interactive REPL (default when no args) |
 | `repl` | Interactive REPL with syntax highlighting and auto-completion |
 | `play` | Play an Alda file |
+| `live` | Loop an Alda file and restart it on every save (live coding) |
 | `eval` | Evaluate Alda code directly |
 | `ports` | List available MIDI ports (both input and output) |
 | `transcribe` | Record MIDI input and output Alda code |
@@ -506,6 +545,22 @@ aldakit play [-v] [-o FILE] [--port NAME|INDEX] [-sf FILE] [-a] [-vp NAME] [--st
 | `--stdin` | Read from stdin (blank line to play) |
 | `--parse-only` | Print AST without playing |
 | `--no-wait` | Don't wait for playback to finish |
+
+### `live` Subcommand
+
+```sh
+aldakit live [--port NAME|INDEX] [-a] [-sf FILE] [-vp NAME] [--poll SECONDS] [-v] FILE
+```
+
+| Option | Description |
+| ------ | ----------- |
+| `FILE` | Alda file to loop |
+| `--port NAME\|INDEX` | MIDI port by name or index (see `aldakit ports`) |
+| `-a, --audio` | Use audio backend with pre-configured soundfont |
+| `-sf, --soundfont FILE` | Use TinySoundFont audio backend with specified SoundFont |
+| `-vp, --virtual-port NAME` | Custom virtual MIDI port name (default: AldakitMIDI) |
+| `--poll SECONDS` | File-change poll interval in seconds (default: 0.1) |
+| `-v, --verbose` | Verbose output |
 
 ### `eval` Subcommand
 

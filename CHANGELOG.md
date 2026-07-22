@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Live-coding loop (`aldakit live`)** - Play an Alda file on repeat and restart it from the top whenever the file is saved, for editing music in real time. Exposed as the `aldakit live FILE` CLI subcommand, the `aldakit.live()` convenience function, and the `aldakit.LivePlayer` class. File changes are detected by polling `st_mtime` (no new dependencies). A save that introduces a parse error is ignored — the last valid version keeps looping and the error is printed — so a half-typed edit never interrupts playback. Works with both the MIDI and audio backends. The audio-backend/soundfont resolution shared by `play`, `repl`, and `live` was factored into a single `cli._resolve_audio_backend()` helper.
+
 ### Fixed
 
 - **`Seq.from_alda()` silently produced empty sequences** - `Seq.from_alda(source).elements` was always `[]`, so every `compose.transform` function (`transpose`, `invert`, `reverse`, etc.) silently no-op'd on parsed text. Added `compose/from_ast.py` to convert AST nodes into compose objects, populating `.elements` correctly; unsupported constructs (repeats, crams, voices, variables, markers, lisp attributes) raise the new `UnsupportedAldaConstructError` instead of failing silently.

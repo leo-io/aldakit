@@ -65,6 +65,18 @@ class MidiBackend(ABC):
         while self.is_playing():
             time.sleep(poll_interval)
 
+    def __enter__(self) -> "MidiBackend":
+        """Enter the backend context. Subclasses may override for setup."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit the backend context, stopping playback by default.
+
+        Subclasses that hold resources (e.g. an open MIDI port) should
+        override this to also release them.
+        """
+        self.stop()
+
     @property
     def concurrent_mode(self) -> bool:
         """Whether concurrent playback is enabled.

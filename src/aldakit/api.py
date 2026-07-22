@@ -73,6 +73,45 @@ def save_file(source_path: str | Path, output_path: str | Path) -> None:
     score.save(output_path)
 
 
+def live(
+    path: str | Path,
+    *,
+    port: str | None = None,
+    use_audio: bool = False,
+    soundfont: str | None = None,
+    verbose: bool = False,
+) -> int:
+    """Loop an Alda file, restarting playback whenever the file is saved.
+
+    This is a live-coding helper: it plays the file continuously and watches it
+    on disk. Saving a valid edit restarts playback from the beginning; a save
+    with a parse error is ignored (the last good version keeps looping).
+
+    Args:
+        path: Path to the Alda file to loop.
+        port: MIDI output port name (MIDI backend only).
+        use_audio: Use the built-in TinySoundFont audio backend.
+        soundfont: SoundFont path for the audio backend.
+        verbose: Print extra status information.
+
+    Returns:
+        A process-style exit code (0 on clean stop, 130 on Ctrl+C).
+
+    Examples:
+        >>> import aldakit
+        >>> aldakit.live("song.alda")  # Ctrl+C to stop
+    """
+    from .liveplayer import LivePlayer
+
+    return LivePlayer(
+        path,
+        port=port,
+        use_audio=use_audio,
+        soundfont=soundfont,
+        verbose=verbose,
+    ).run()
+
+
 def list_ports() -> list[str]:
     """List available MIDI output ports.
 

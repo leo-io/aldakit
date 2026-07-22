@@ -4,6 +4,7 @@ import argparse
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from . import __version__, generate_midi, parse
 from .config import load_config
@@ -188,6 +189,56 @@ def create_parser() -> argparse.ArgumentParser:
         help="Play an Alda file or code",
     )
     _add_play_arguments(play_parser)
+
+    # ------------------------------------------------------------
+    # live subcommand
+
+    live_parser = subparsers.add_parser(
+        "live",
+        help="Loop an Alda file and restart it on save (live coding)",
+    )
+    live_parser.add_argument(
+        "file",
+        type=Path,
+        help="Alda file to loop",
+    )
+    live_parser.add_argument(
+        "--port",
+        metavar="NAME",
+        help="MIDI output port name or index (see 'aldakit ports')",
+    )
+    live_parser.add_argument(
+        "-a",
+        "--audio",
+        action="store_true",
+        help="Use built-in audio backend (with configured soundfont)",
+    )
+    live_parser.add_argument(
+        "-sf",
+        "--soundfont",
+        metavar="FILE",
+        help="Use TinySoundFont audio backend with specified SoundFont file",
+    )
+    live_parser.add_argument(
+        "-vp",
+        "--virtual-port",
+        metavar="NAME",
+        default=DEFAULT_VIRTUAL_PORT_NAME,
+        help=f"Name for virtual MIDI port (default: {DEFAULT_VIRTUAL_PORT_NAME})",
+    )
+    live_parser.add_argument(
+        "--poll",
+        type=float,
+        default=POLL_INTERVAL_PLAYBACK,
+        metavar="SECONDS",
+        help=f"File-change poll interval in seconds (default: {POLL_INTERVAL_PLAYBACK})",
+    )
+    live_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Print verbose output",
+    )
 
     # ------------------------------------------------------------
     # eval subcommand
@@ -600,6 +651,76 @@ def _resolve_input_port(port_specifier: str | None) -> tuple[str | None, bool]:
     return _resolve_port_specifier(port_specifier, ports, "input")
 
 
+def _resolve_audio_backend(
+    args: argparse.Namespace, config: Any
+) -> tuple[bool, str | None, bool]:
+    """Resolve whether to use the audio backend and which soundfont to use.
+
+    Audio mode is selected if the CLI ``-a``/``-sf`` flag is passed or the
+    config sets ``backend = audio``. The soundfont comes from ``-sf`` (falling
+    back to the configured soundfont).
+
+    Returns:
+        Tuple of (use_audio, soundfont, ok). On failure, prints an error and
+        ``ok`` is False.
+    """
+    cli_audio = getattr(args, "audio", False)
+    cli_soundfont = getattr(args, "soundfont", None)
+    use_audio = cli_audio or cli_soundfont is not None or config.backend == "audio"
+    soundfont = cli_soundfont or config.soundfont
+
+    if use_audio and not soundfont:
+        print(
+            "Error: No soundfont configured for audio backend.",
+            file=sys.stderr,
+        )
+        print(
+            "Set ALDAKIT_SOUNDFONT environment variable or use -sf PATH.",
+            file=sys.stderr,
+        )
+        return use_audio, soundfont, False
+
+    return use_audio, soundfont, True
+
+
+def live_command(args: argparse.Namespace, config: Any) -> int:
+    """Loop an Alda file, restarting playback whenever the file changes."""
+    from .liveplayer import LivePlayer
+
+    file_arg: Path = args.file
+    if not file_arg.exists():
+        print(f"Error: File not found: {file_arg}", file=sys.stderr)
+        print(
+            "  Check the path and ensure the file has a .alda extension.",
+            file=sys.stderr,
+        )
+        return 1
+
+    port, ok = _resolve_output_port(args.port or config.port)
+    if not ok:
+        return 1
+
+    use_audio, soundfont, ok = _resolve_audio_backend(args, config)
+    if not ok:
+        return 1
+
+    player = LivePlayer(
+        file_arg,
+        port=port,
+        use_audio=use_audio,
+        soundfont=soundfont,
+        virtual_port_name=args.virtual_port,
+        poll_interval=args.poll,
+        verbose=args.verbose or config.verbose,
+    )
+
+    try:
+        return player.run()
+    except (RuntimeError, FileNotFoundError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main entry point for the CLI."""
     parser = create_parser()
@@ -620,24 +741,9 @@ def main(argv: list[str] | None = None) -> int:
         concurrent = not getattr(args, "sequential", False)
         verbose = args.verbose or config.verbose
 
-        # CLI -a or -sf explicitly forces audio mode
-        cli_audio = getattr(args, "audio", False)
-        cli_soundfont = getattr(args, "soundfont", None)
-        # Audio mode if: CLI -a passed, CLI -sf passed, or config.backend="audio"
-        use_audio = cli_audio or cli_soundfont is not None or config.backend == "audio"
-        # Soundfont: CLI overrides config (config.soundfont is fallback)
-        soundfont = cli_soundfont or config.soundfont
-
-        # Error if audio mode requested but no soundfont configured
-        if use_audio and not soundfont:
-            print(
-                "Error: No soundfont configured for audio backend.",
-                file=sys.stderr,
-            )
-            print(
-                "Set ALDAKIT_SOUNDFONT environment variable or use -sf PATH.",
-                file=sys.stderr,
-            )
+        # Determine backend (audio vs MIDI) and soundfont path.
+        use_audio, soundfont, ok = _resolve_audio_backend(args, config)
+        if not ok:
             return 1
 
         virtual_port = getattr(args, "virtual_port", DEFAULT_VIRTUAL_PORT_NAME)
@@ -660,6 +766,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "transcribe":
         return transcribe_command(args)
 
+    if args.command == "live":
+        return live_command(args, config)
+
     if args.command == "eval":
         # Convert eval command to play with -e
         args.eval = args.code
@@ -678,8 +787,7 @@ def main(argv: list[str] | None = None) -> int:
     output = getattr(args, "output", None)
     verbose = getattr(args, "verbose", False) or config.verbose
 
-    # CLI -a or -sf explicitly passed forces audio mode
-    cli_audio = getattr(args, "audio", False)
+    # CLI -sf explicitly passed forces audio mode (used by the default REPL branch)
     cli_soundfont = getattr(args, "soundfont", None)
 
     # Resolve port specifier (can be index like "0" or name)
@@ -773,24 +881,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Saved to {output}")
         return 0
 
-    # Determine backend:
-    # - CLI -a explicitly forces audio mode
-    # - CLI -sf explicitly forces audio mode
-    # - config.backend="audio" forces audio mode
-    # - config.soundfont is just a fallback path when audio is needed
-    use_audio = cli_audio or cli_soundfont is not None or config.backend == "audio"
-    soundfont = cli_soundfont or config.soundfont
-
-    # Error if audio mode explicitly requested but no soundfont configured
-    if use_audio and not soundfont:
-        print(
-            "Error: No soundfont configured for audio backend.",
-            file=sys.stderr,
-        )
-        print(
-            "Set ALDAKIT_SOUNDFONT environment variable or use -sf PATH.",
-            file=sys.stderr,
-        )
+    # Determine backend (audio vs MIDI) and soundfont path.
+    use_audio, soundfont, ok = _resolve_audio_backend(args, config)
+    if not ok:
         return 1
 
     if not use_audio and port is None:

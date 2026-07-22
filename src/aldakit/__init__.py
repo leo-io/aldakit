@@ -1,6 +1,6 @@
 """aldakit: a pythonic alda music programming language implementation."""
 
-from .api import list_ports, play, play_file, save, save_file
+from .api import list_ports, live, play, play_file, save, save_file
 from .ast_nodes import (
     ASTNode,
     ASTVisitor,
@@ -36,6 +36,7 @@ from .ast_nodes import (
     VoiceNode,
 )
 from .errors import AldaParseError, AldaScanError, AldaSyntaxError
+from .liveplayer import LivePlayer
 from .midi import (
     LibremidiBackend,
     MidiBackend,
@@ -60,6 +61,8 @@ __all__ = [
     "play_file",
     "save",
     "save_file",
+    "live",
+    "LivePlayer",
     "list_ports",
     "transcribe",
     "list_input_ports",
