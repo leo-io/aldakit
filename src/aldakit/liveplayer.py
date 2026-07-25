@@ -154,6 +154,15 @@ class LivePlayer:
         if self._sequence is not None and not backend.is_playing():
             backend.play(self._sequence)
 
+    def get_playback_state(self) -> tuple[float, MidiSequence | None]:
+        """Return the current playback time and the active sequence."""
+        backend = getattr(self, "_active_backend", self._backend)
+        if backend and hasattr(backend, "_async_manager"):
+            mgr = backend._async_manager
+            if mgr:
+                return mgr.get_current_time(), self._sequence
+        return 0.0, self._sequence
+
     def run(self, stop_event: threading.Event | None = None) -> int:
         """Play the file on a loop until interrupted.
 
@@ -168,6 +177,7 @@ class LivePlayer:
             stop_event = threading.Event()
 
         backend = self._backend if self._backend is not None else self._build_backend()
+        self._active_backend = backend
 
         self._last_mtime = self._current_mtime()
         self._sequence = self._load()

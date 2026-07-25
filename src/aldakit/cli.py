@@ -715,7 +715,22 @@ def live_command(args: argparse.Namespace, config: Any) -> int:
     )
 
     try:
-        return player.run()
+        from .editor import run_editor
+        import threading
+        
+        stop_event = threading.Event()
+        player_thread = threading.Thread(
+            target=player.run, args=(stop_event,), daemon=True
+        )
+        player_thread.start()
+        
+        # Run the UI on the main thread
+        run_editor(str(file_arg), player)
+        
+        # Shutdown
+        stop_event.set()
+        player_thread.join(timeout=1.0)
+        return 0
     except (RuntimeError, FileNotFoundError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

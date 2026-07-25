@@ -1167,11 +1167,15 @@ class TestLiveSubcommand:
                 captured["file"] = file
                 captured["kwargs"] = kwargs
 
-            def run(self):
+            def run(self, stop_event=None):
                 captured["ran"] = True
                 return 0
+                
+            def stop(self):
+                pass
 
         monkeypatch.setattr("aldakit.liveplayer.LivePlayer", DummyPlayer)
+        monkeypatch.setattr("aldakit.editor.run_editor", lambda file, player: None)
         monkeypatch.setattr(
             "aldakit.cli._resolve_output_port", lambda spec: (None, True)
         )

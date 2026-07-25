@@ -330,6 +330,8 @@ class MidiGenerator(ASTVisitor):
                 start_time=part.current_time,
                 duration=actual_duration,
                 channel=part.channel,
+                source_line=node.position.line if node.position else None,
+                source_col=node.position.column if node.position else None,
             )
             self.sequence.notes.append(midi_note_event)
 

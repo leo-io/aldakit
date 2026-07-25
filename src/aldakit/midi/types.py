@@ -284,6 +284,8 @@ class MidiNote:
     start_time: float  # Start time in seconds
     duration: float  # Duration in seconds
     channel: int = 0  # MIDI channel (0-15)
+    source_line: int | None = None  # 1-indexed source line
+    source_col: int | None = None   # 1-indexed source column
 
 
 @dataclass

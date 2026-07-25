@@ -117,6 +117,14 @@ class AsyncPlaybackManager:
         """Check if any slot is currently playing."""
         return self.active_count > 0
 
+    def get_current_time(self) -> float:
+        """Get the current playback time in seconds for the active slot."""
+        with self._lock:
+            for slot in self._slots:
+                if slot.active and slot.start_time > 0:
+                    return time.perf_counter() - slot.start_time
+        return 0.0
+
     def _find_free_slot(self) -> PlaybackSlot | None:
         """Find a free playback slot."""
         with self._lock:
